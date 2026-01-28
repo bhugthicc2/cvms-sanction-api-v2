@@ -14,15 +14,6 @@ app.use(express.json());
 
 app.use("/api/violations", violationRoutes);
 
-// Simple test endpoint (no Firebase dependency)
-app.get("/test", (req, res) => {
-  res.status(200).json({ 
-    status: "OK", 
-    message: "Simple test endpoint working",
-    timestamp: new Date().toISOString()
-  });
-});
-
 // Health check endpoint
 app.get("/health", (req, res) => {
   res.status(200).json({ 
