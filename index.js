@@ -1,100 +1,110 @@
 require("dotenv").config();
 
-const app = require("./src/app");
-const { admin, db } = require("./src/firebase/admin");
+console.log("Starting backend application...");
+console.log("Environment variables loaded:", Object.keys(process.env).filter(key => key.includes('FIREBASE')).length, "Firebase vars found");
 
-app.post("/sanctions/from-violation", async (req, res) => {
-  try {
-    const { violationId, vehicleId, confirmedBy } = req.body;
+try {
+  const app = require("./src/app");
+  const { admin, db } = require("./src/firebase/admin");
 
-    if (!violationId || !vehicleId) {
-      return res.status(400).json({ error: "Missing data" });
-    }
+  app.post("/sanctions/from-violation", async (req, res) => {
+    try {
+      const { violationId, vehicleId, confirmedBy } = req.body;
 
-    // 1️ Count confirmed violations for this vehicle
-    const violationsSnap = await db
-      .collection("violations")
-      .where("vehicleId", "==", vehicleId)
-      .where("status", "==", "confirmed")
-      .get();
+      if (!violationId || !vehicleId) {
+        return res.status(400).json({ error: "Missing data" });
+      }
 
-    const offenseNumber = violationsSnap.size;
+      // 1️ Count confirmed violations for this vehicle
+      const violationsSnap = await db
+        .collection("violations")
+        .where("vehicleId", "==", vehicleId)
+        .where("status", "==", "confirmed")
+        .get();
 
-    // 2️ Decide sanction
-    let sanctionType = "warning";
-    let vehicleStatus = "active";
-    let endAt = null;
+      const offenseNumber = violationsSnap.size;
 
-    if (offenseNumber === 2) {
-      sanctionType = "suspension";
-      vehicleStatus = "suspended";
+      // 2️ Decide sanction
+      let sanctionType = "warning";
+      let vehicleStatus = "active";
+      let endAt = null;
 
-      // 30 working days (simple version = 42 calendar days)
-      endAt = admin.firestore.Timestamp.fromDate(
-        new Date(Date.now() + 42 * 24 * 60 * 60 * 1000)
-      );
-    }
+      if (offenseNumber === 2) {
+        sanctionType = "suspension";
+        vehicleStatus = "suspended";
 
-    if (offenseNumber >= 3) {
-      sanctionType = "revocation";
-      vehicleStatus = "revoked";
-    }
+        // 30 working days (simple version = 42 calendar days)
+        endAt = admin.firestore.Timestamp.fromDate(
+          new Date(Date.now() + 42 * 24 * 60 * 60 * 1000)
+        );
+      }
 
-    // 3️ Create sanction record
-    const sanctionRef = await db.collection("sanctions").add({
-      violationId,
-      vehicleId,
-      offenseNumber,
-      type: sanctionType,
-      status: sanctionType === "warning" ? "completed" : "active",
-      startAt: admin.firestore.FieldValue.serverTimestamp(),
-      endAt,
-      createdBy: confirmedBy,
-      createdAt: admin.firestore.FieldValue.serverTimestamp(),
-    });
+      if (offenseNumber >= 3) {
+        sanctionType = "revocation";
+        vehicleStatus = "revoked";
+      }
 
-    // 4️ Update vehicle status if needed
-    if (vehicleStatus !== "active") {
-      await db.collection("vehicles").doc(vehicleId).update({
-        registrationStatus: vehicleStatus,
+      // 3️ Create sanction record
+      const sanctionRef = await db.collection("sanctions").add({
+        violationId,
+        vehicleId,
+        offenseNumber,
+        type: sanctionType,
+        status: sanctionType === "warning" ? "completed" : "active",
+        startAt: admin.firestore.FieldValue.serverTimestamp(),
+        endAt,
+        createdBy: confirmedBy,
+        createdAt: admin.firestore.FieldValue.serverTimestamp(),
+      });
+
+      // 4️ Update vehicle status if needed
+      if (vehicleStatus !== "active") {
+        await db.collection("vehicles").doc(vehicleId).update({
+          registrationStatus: vehicleStatus,
+        });
+      }
+
+      // 5️ Mark violation as sanctioned
+      const violationRef = db.collection("violations").doc(violationId);
+      const violationDoc = await violationRef.get();
+      
+      if (violationDoc.exists) {
+        await violationRef.update({
+          sanctionApplied: true,
+          sanctionId: sanctionRef.id,
+        });
+      } else {
+        console.warn(`Violation document ${violationId} not found, skipping update`);
+      }
+
+      res.json({
+        success: true,
+        sanctionType,
+        offenseNumber,
+      });
+    } catch (err) {
+      console.error("SANCTION ERROR:", err);
+      console.error("ERROR DETAILS:", {
+        message: err.message,
+        stack: err.stack,
+        name: err.name
+      });
+      res.status(500).json({
+        error: "Sanction processing failed",
+        details: err.message,
+        stack: err.stack,
       });
     }
+  });
 
-    // 5️ Mark violation as sanctioned
-    const violationRef = db.collection("violations").doc(violationId);
-    const violationDoc = await violationRef.get();
-    
-    if (violationDoc.exists) {
-      await violationRef.update({
-        sanctionApplied: true,
-        sanctionId: sanctionRef.id,
-      });
-    } else {
-      console.warn(`Violation document ${violationId} not found, skipping update`);
-    }
+  const PORT = process.env.PORT || 3000;
 
-    res.json({
-      success: true,
-      sanctionType,
-      offenseNumber,
-    });
-  } catch (err) {
-    console.error("SANCTION ERROR:", err);
-    console.error("ERROR DETAILS:", {
-      message: err.message,
-      stack: err.stack,
-      name: err.name
-    });
-    res.status(500).json({
-      error: "Sanction processing failed",
-      details: err.message,
-      stack: err.stack,
-    });
-  }
-});
+  app.listen(PORT, () => {
+    console.log(`Backend running on port ${PORT}`);
+    console.log(`Health check available at: http://localhost:${PORT}/health`);
+  });
 
-const PORT = process.env.PORT || 3000;
-
-app.listen(PORT, () => {
-  console.log(`Backend running on port ${PORT}`);
-});
+} catch (error) {
+  console.error("Failed to start application:", error);
+  process.exit(1);
+}
