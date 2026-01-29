@@ -63,7 +63,7 @@ try {
       if (vehicleStatus !== "active") {
         await db.collection("vehicles").doc(vehicleId).update({
           registrationStatus: vehicleStatus,
-          hasActiveSanction: sanctionType !== "warning",
+          hasActiveSanction: true,
           hasUnresolvedViolation: true,
         });
       }
