@@ -37,6 +37,7 @@ async function applySanctionForViolation(violationId) {
 
     if (offenseCount === 1) {
       sanctionType = "warning";
+      vehicleStatus = "warned";
     } else if (offenseCount === 2) {
       sanctionType = "suspension";
       vehicleStatus = "suspended";

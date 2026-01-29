@@ -26,7 +26,7 @@ try {
 
       // 2️ Decide sanction
       let sanctionType = "warning";
-      let vehicleStatus = "active";
+      let vehicleStatus = "warned";
       let endAt = null;
 
       if (offenseNumber === 2) {
