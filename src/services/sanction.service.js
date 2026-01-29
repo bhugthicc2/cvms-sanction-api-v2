@@ -24,7 +24,7 @@ async function applySanctionForViolation(violationId) {
         .where("status", "==", "confirmed")
     );
 
-    const offenseCount = offensesSnap.size + 1; // +1 for the violation being confirmed
+    const offenseCount = offensesSnap.size; // +1 for the violation being confirmed
 
     let sanctionType = null;
     let vehicleStatus = "active";
